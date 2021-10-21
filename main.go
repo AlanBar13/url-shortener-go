@@ -12,6 +12,7 @@ import (
 	firebase "firebase.google.com/go"
 	"github.com/gin-gonic/gin"
 	"github.com/teris-io/shortid"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
@@ -75,8 +76,8 @@ func shorten(c *gin.Context) {
 	doc["urlCode"] = urlCode
 	doc["longUrl"] = body.LongUlr
 	doc["shortUrl"] = shortUrl
-	doc["postedDate"] = now
-	doc["expiresDate"] = expire
+	doc["postedDate"] = now.Unix()
+	doc["expiresDate"] = expire.Unix()
 	_, er := ref.Doc(urlCode).Set(ctx, doc)
 
 	if er != nil {
@@ -148,8 +149,8 @@ func customUrl(c *gin.Context) {
 		doc["urlCode"] = body.CustomCode
 		doc["longUrl"] = body.LongUrl
 		doc["shortUrl"] = shortUrl
-		doc["postedDate"] = now
-		doc["expiresDate"] = expire
+		doc["postedDate"] = now.Unix()
+		doc["expiresDate"] = expire.Unix()
 
 		_, errFb := ref.Doc(body.CustomCode).Set(ctx, doc)
 		if errFb != nil {
@@ -157,6 +158,27 @@ func customUrl(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusCreated, gin.H{"newUrl": shortUrl, "expires": expire.String(), "db_id": body.CustomCode})
+	}
+
+}
+
+func deleteExpired() {
+	ctx := context.Background()
+	client := dbInitx(ctx)
+	now := time.Now()
+	log.Print(now.Unix())
+	iter := client.Collection("urls").Where("expiresDate", "<", now.Unix()).Documents(ctx)
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Deleting code %s", doc.Data()["urlCode"])
+		doc.Ref.Delete(ctx)
 	}
 
 }
