@@ -21,6 +21,7 @@ func main() {
 	r := gin.Default()
 
 	r.POST("/shorten", shorten)
+	r.POST("/custom", customUrl)
 	r.GET("/:code", redirect)
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusAccepted, gin.H{"message": "Welcome to shrtn url"})
@@ -31,6 +32,11 @@ func main() {
 
 type postBody struct {
 	LongUlr string `json:"longUrl"`
+}
+
+type customBody struct {
+	LongUrl    string `json:"longUrl"`
+	CustomCode string `json:"customCode"`
 }
 
 func shorten(c *gin.Context) {
@@ -103,6 +109,50 @@ func redirect(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Url not Found"})
 		return
 	}
+}
+
+func customUrl(c *gin.Context) {
+	var body customBody
+	ctx := context.Background()
+
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	_, errUrl := url.ParseRequestURI(body.LongUrl)
+	if errUrl != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": errUrl.Error()})
+		return
+	}
+
+	client := dbInitx(ctx)
+	ref := client.Collection("urls")
+
+	dsnap, _ := ref.Doc(body.CustomCode).Get(ctx)
+
+	if dsnap.Exists() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Custom code: %s already in use", body.CustomCode)})
+		return
+	} else {
+		var shortUrl = baseUrl + body.CustomCode
+		now := time.Now()
+		expire := now.AddDate(0, 0, 7)
+		doc := make(map[string]interface{})
+		doc["urlCode"] = body.CustomCode
+		doc["longUrl"] = body.LongUrl
+		doc["shortUrl"] = shortUrl
+		doc["postedDate"] = now
+		doc["expiresDate"] = expire
+
+		_, errFb := ref.Doc(body.CustomCode).Set(ctx, doc)
+		if errFb != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errFb.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{"newUrl": shortUrl, "expires": expire.String(), "db_id": body.CustomCode})
+	}
+
 }
 
 func dbInitx(context context.Context) (clnt *firestore.Client) {
