@@ -126,6 +126,12 @@ func customUrl(c *gin.Context) {
 		return
 	}
 
+	length := len(body.CustomCode)
+	if length <= 3 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Custom Code should be more than 3 characters"})
+		return
+	}
+
 	client := dbInitx(ctx)
 	ref := client.Collection("urls")
 
